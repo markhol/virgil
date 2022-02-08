@@ -560,7 +560,7 @@ class SsaX86_64Gen extends SsaMachGen {
 			var shiftor = if(m.wide, u6.view(m.ylong), u5.view(m.yint));
 			return emit2(opcode | (AM_OP_IMM << AM_SHIFT), ovwReg(i, m.x), useInt(shiftor));
 		}
-		return emit2(opcode | (AM_OP << AM_SHIFT), ovwReg(i, m.x), useFixed(m.y, Regs.RCX));
+		return emit2(opcode | (AM_OP << AM_SHIFT), ovwRegFixed(i, m.x, Regs.NOT_RCX), useFixed(m.y, Regs.RCX));
 	}
 	def useMrrsd(x: SsaInstr, y: SsaInstr, scale: byte, disp: Val) {
 		if (x == null) useInt(0); // no base register, will ignore
@@ -767,12 +767,19 @@ class SsaX86_64Gen extends SsaMachGen {
 	def genMoveLocLoc(src: (VReg, int), dst: (VReg, int), regClass: RegClass) {
 		var from: int;
 		if (regSet.isStack(dst.1)) {
-			var opcode = moveOpcode(regClass), srcloc = src.1;
-			if (Regs.SET.isStack(srcloc)) {
+			if (Regs.SET.isStack(src.1)) {
+				var opcode = moveOpcode(regClass), srcloc = src.1;
 				emit2(opcode | (AM_REG_OP << AM_SHIFT), op(Operand.Def(null, Regs.SCRATCH_GPR)), op(Operand.Use(src)));
 				emit2(opcode | (AM_OP_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(null, Regs.SCRATCH_GPR)));
 			} else {
-				emit2(opcode | (AM_OP_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(src)));
+				var xmm = Regs.toXmmr(src.1);
+				if (xmm != null) {
+					var opcode = if(regClass == RegClass.F32, I_MOVSS, I_MOVSD);
+					emit2(opcode | (AM_XMM_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(src)));
+				} else {
+					var opcode = moveOpcode(regClass), srcloc = src.1;
+					emit2(opcode | (AM_OP_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(src)));
+				}
 			}
 		} else {
 			var xmm = Regs.toXmmr(dst.1);
@@ -1512,6 +1519,7 @@ class X86InstrBuffer extends ArchInstrBuffer {
 			I_ADCD => name = "adcd";
 			I_ANDD => name = "andd";
 			I_SUBD => name = "subd";
+			I_XORD => name = "xord";
 			I_CMPD => name = "cmpd";
 			I_CMPB => name = "cmpb";
 			I_MULD => name = "imuld";
@@ -1526,6 +1534,7 @@ class X86InstrBuffer extends ArchInstrBuffer {
 			I_ADCQ => name = "adcq";
 			I_ANDQ => name = "andq";
 			I_SUBQ => name = "subq";
+			I_XORQ => name = "xorq";
 			I_CMPQ => name = "cmpq";
 			I_MULQ => name = "imulq";
 			I_DIVQ => name = "divq";

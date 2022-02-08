@@ -820,6 +820,10 @@ class SsaMachGen(context: SsaContext, mach: MachProgram, regSet: MachRegSet, w: 
 		var dreg = getVReg(d);
 		operands.put(Operand.Overwrite(dreg, upref(getVReg(u)), anyReg(dreg)));
 	}
+	def ovwRegFixed(d: SsaInstr, u: SsaInstr, constraint: int) {
+		var dreg = getVReg(d);
+		operands.put(Operand.Overwrite(dreg, upref(getVReg(u)), constraint));
+	}
 	def ovwv(d: VReg, u: VReg, constraint: int) {
 		operands.put(Operand.Overwrite(d, upref(u), constraint));
 	}

@@ -806,7 +806,8 @@ class SsaX86_64Gen extends SsaMachGen {
 			} else {
 				var opcode = moveOpcode(regClass);
 				if (isImm32) {
-					emit2(I_MOVD | (AM_OP_IMM << AM_SHIFT), op(Operand.Def(dst)), op(immOp));
+					var opcode = if(regClass == RegClass.I32, I_MOVD, I_MOVQ);
+					emit2(opcode | (AM_OP_IMM << AM_SHIFT), op(Operand.Def(dst)), op(immOp));
 				} else {
 					var val = SsaConst.!(src.ssa).val;
 					var bits: long;

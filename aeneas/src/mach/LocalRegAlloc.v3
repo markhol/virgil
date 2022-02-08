@@ -2,7 +2,7 @@
 // See LICENSE for details of Apache 2.0 license.
 
 // Local register allocator that spills everything to the stack between basic blocks.
-def verbose = true;
+def verbose = false;
 def paranoid = true;
 class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 	def regState = Array<int>.new(regSet.physRegs);			// indices into {allocated}
@@ -82,40 +82,23 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 			// process uses
 			for (j < operands.length) match (operands[j]) {
 				Def(vreg, assignment) => {
-					if (paranoid) sanityCheck();
 					freeReg(assignment, true);
-					if (paranoid) sanityCheck();
 				}
 				Overwrite(dst, use, assignment) => {
-					if (paranoid) sanityCheck();
 					freeReg(assignment, true);
-					if (paranoid) sanityCheck();
-					if (use.reg != 0) { // TODO: live in
-						codegen.insertMoveLocLoc((use, use.reg), (use, assignment), use.regClass, cur);
-					} else {
-						allocReg(use, assignment);
-					}
-					if (paranoid) sanityCheck();
+					allocUseReg(use, assignment);
 				}
 				Kill(constraint) => {
-					if (paranoid) sanityCheck();
 					if (constraint < regSet.regSets.length) {
 						for (reg in regSet.regSets[constraint]) {
 							spillReg(reg, next);
 							freeReg(reg, true);
 						}
 					}
-					if (paranoid) sanityCheck();
 				}
 				Use(vreg, constraint) => {
-					if (paranoid) sanityCheck();
-					var loc: int = vreg.reg;
-					if (!isOk(vreg, constraint)) {
-						spillReg(vreg.reg, next);
-						loc = allocReg(vreg, findBestLoc(vreg.regClass, vreg.hint, constraint));
-					}
+					var loc = allocUseReg(vreg, constraint);
 					operands[j] = Operand.Use(vreg, loc);
-					if (paranoid) sanityCheck();
 				}
 				_ => ;
 			}
@@ -129,12 +112,29 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 			cur = prev;
 		}
 	}
+	def allocUseReg(vreg: VReg, constraint: int) -> int {
+		var prevReg = vreg.reg, loc: int = prevReg;
+		if (!isOk(vreg, constraint)) {
+			if (isUsedInThisInstr(prevReg)) {
+				freeReg(prevReg, true);
+				loc = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, constraint));
+				codegen.insertMoveLocLoc((vreg, loc), (vreg, prevReg), vreg.regClass, cur);
+			} else {
+				spillReg(prevReg, next);
+				freeReg(prevReg, true);
+				loc = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, constraint));
+			}
+		}
+		if (paranoid) sanityCheck();
+		return loc;
+	}
 	def allocDefReg(vreg: VReg, constraint: int) -> int {
 		var prevReg = vreg.reg;
 		vreg.reg = 0;
-		var loc = allocReg(vreg, findBestLoc(vreg.regClass, prevReg, constraint));
-		if (prevReg != 0) moves.addDef(vreg, loc, prevReg);
-		if (vreg.spill != 0) moves.addDef(vreg, loc, vreg.spill);
+		var loc = reassignReg(vreg, findBestLoc(vreg.regClass, prevReg, constraint));
+		if (prevReg != 0) moves.addRegMove(vreg, loc, prevReg);
+		if (vreg.spill != 0) moves.saves.put(vreg, loc, vreg.spill);
+		if (paranoid) sanityCheck();
 		return loc;
 	}
 	def dumpState(str: string) {
@@ -182,6 +182,11 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 		if (constraint == 0) return true;
 		return regSet.isInRegSet(vreg.reg, constraint);
 	}
+	def isUsedInThisInstr(reg: byte) -> bool {
+		var i = regState[reg];
+		if (i < 0) return false;
+		return allocated[i].1 == pos;
+	}
 	def findBestLoc(regClass: RegClass, hint: int, constraint: int) -> int {
 		if (constraint >= regSet.regSets.length) return constraint; // constraint is for spill slot
 		if (constraint == 0) constraint = regSet.regClasses[regClass.tag];
@@ -189,7 +194,7 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 			var i = regState[hint];
 			if (i < 0 && regSet.isInRegSet(hint, constraint)) return hint; // hint register is free
 		}
-		// Find a register from the constraint set; a free on, or the one used farthest in future
+		// Find a register from the constraint set; a free one, or the one used farthest in future
 		var minpos = int.max, newReg: byte = 0;
 		for (reg in regSet.regSets[constraint]) {
 			var i = regState[reg];
@@ -203,7 +208,7 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 		if (newReg == 0) codegen.context.fail("no registers available");
 		return newReg;
 	}
-	def allocReg(vreg: VReg, reg: int) -> int {
+	def reassignReg(vreg: VReg, reg: int) -> int {
 		if (reg > regSet.physRegs) return reg;
 		var i = regState[reg];
 		if (i < 0) {
@@ -287,27 +292,29 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 		return loc;
 	}
 }
-def LIVE: byte = 3;
-def ON_STACK: byte = 2;
-def IN_CYCLE: byte = 1;
+def LIVE: i8 = 0;
+def ON_STACK: i8 = -1;
+def IN_CYCLE: i8 = -2;
+def DEAD: i8 = -3;
 
 class MoveSet(regSet: MachRegSet) {
-	def entries = Array<(byte, VReg, int)>.new(regSet.physRegs);
-	def saves = Vector<(VReg, int, int)>.new();
-	def reloads = Vector<(VReg, int)>.new();
+	def regindex = Array<int>.new(regSet.physRegs);		// where each register occurs, if all, in regmoves
+	def regmoves = Vector<(i8, VReg, int, byte)>.new();	// (state, VReg, src, reg)
+	def saves = Vector<(VReg, int, int)>.new();		// (VReg, src, dst)
+	def reloads = Vector<(VReg, int)>.new();		// (VReg, dst)
 
-	def addDef(vreg: VReg, src: int, dst: int) {
-		if (src != dst)	{
-			if (regSet.isReg(dst)) entries[src] = (LIVE, vreg, dst);
-			else saves.put(vreg, src, dst);
-		}
+	def addRegMove(vreg: VReg, src: int, dst: byte) {
+		if (src == dst)	return;
+		var index = regmoves.length;
+		regmoves.put(LIVE, vreg, src, dst);
+		if (regSet.isReg(src)) regindex[src] = index;
 	}
 	def emit(codegen: SsaMachGen, next: ArchInstr) {
 		for (j < saves.length) {
 			var s = saves[j], vreg = s.0, src = s.1, dst = s.2;
-			codegen.insertMoveLocLoc((vreg, src), (vreg, dst), vreg.regClass, next);
+			if (src != dst) codegen.insertMoveLocLoc((vreg, src), (vreg, dst), vreg.regClass, next);
 		}
-		for (j < entries.length) emit0(codegen, j, next);
+		for (j < regmoves.length) emit0(codegen, j, next);
 		for (j < reloads.length) {
 			var t = reloads[j], vreg = t.0;
 			if (vreg.isConst()) codegen.insertMoveValLoc(vreg, (vreg, t.1), vreg.regClass, next);
@@ -315,25 +322,29 @@ class MoveSet(regSet: MachRegSet) {
 		}
 	}
 	def emit0(codegen: SsaMachGen, j: int, next: ArchInstr) {
-		var t = entries[j], state = t.0, vreg = t.1, dst = t.2;
+		var t = regmoves[j], state = t.0, vreg = t.1, src = t.2, dst = t.3;
 		if (state < LIVE) return; // already done on or stack
-		entries[j] = (ON_STACK, vreg, dst);
-		var u = entries[dst];
-		if (u.0 == ON_STACK) {
-			var scratch = regSet.scratch[vreg.regClass.tag];
-			entries[dst] = (IN_CYCLE, vreg, scratch);
-			codegen.insertMoveLocLoc((vreg, dst), (vreg, scratch), vreg.regClass, next);
-		} else if (u.0 == LIVE) {
-			emit0(codegen, dst, next);
+		regmoves[j] = (ON_STACK, vreg, src, dst);
+		var d = regindex[dst];
+		if (d >= 0) { // is the source of some regmove
+			var u = regmoves[d];
+			if (u.0 == ON_STACK) {
+				var scratch = regSet.scratch[vreg.regClass.tag];
+				regmoves[d] = (IN_CYCLE, u.1, u.2, scratch);
+				codegen.insertMoveLocLoc((vreg, dst), (vreg, scratch), vreg.regClass, next);
+			} else if (u.0 == LIVE) {
+				emit0(codegen, d, next);
+			}
 		}
-		var src = j;
-		t = entries[j];
-		if (t.0 == IN_CYCLE) src = t.2;
+		// reload entry after recursion
+		t = regmoves[j];
+		if (t.0 == IN_CYCLE) src = t.3; // use scratch of entry
 		codegen.insertMoveLocLoc((vreg, src), (vreg, dst), vreg.regClass, next);
-		entries[j] = (0, null, 0);
+		regmoves[j] = (DEAD, null, 0, 0);
 	}
 	def clear() {
-		for (i < entries.length) entries[i] = (0, null, 0);
+		for (i < regindex.length) regindex[i] = -1;
+		regmoves.resize(0);
 		saves.resize(0);
 		reloads.resize(0);
 	}

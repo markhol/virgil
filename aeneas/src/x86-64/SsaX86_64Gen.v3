@@ -775,7 +775,7 @@ class SsaX86_64Gen extends SsaMachGen {
 				var xmm = Regs.toXmmr(src.1);
 				if (xmm != null) {
 					var opcode = if(regClass == RegClass.F32, I_MOVSS, I_MOVSD);
-					emit2(opcode | (AM_XMM_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(src)));
+					emit2(opcode | (AM_OP_XMM << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(src)));
 				} else {
 					var opcode = moveOpcode(regClass), srcloc = src.1;
 					emit2(opcode | (AM_OP_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(src)));
@@ -1050,6 +1050,8 @@ class SsaX86_64Gen extends SsaMachGen {
 			I_MULSD => asm.mulsd_s_s(a, b);
 			I_DIVSD => asm.divsd_s_s(a, b);
 			I_SQRTSD => asm.sqrtsd_s_s(a, b);
+			I_MOVSS => asm.movss_s_s(a, b);
+			I_MOVSD => asm.movsd_s_s(a, b);
 			I_CVTSS2SD => asm.cvtss2sd_s_s(a, b);
 			I_CVTSD2SS => asm.cvtsd2ss_s_s(a, b);
 			I_PCMPEQD => asm.pcmpeqd_s_s(a, b);

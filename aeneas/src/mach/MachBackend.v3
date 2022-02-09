@@ -749,7 +749,7 @@ class SsaMachGen(context: SsaContext, mach: MachProgram, regSet: MachRegSet, w: 
 		operands.put(Operand.Def(getVReg(i), 0));
 	}
 	def dfnv(vreg: VReg, constraint: int) {
-		if (vreg != null) vreg.hint = if(constraint < regSet.physRegs, byte.view(constraint));
+		if (vreg != null) vreg.hint = if(regSet != null && constraint < regSet.physRegs, byte.view(constraint));
 		operands.put(Operand.Def(vreg, constraint));
 	}
 	def dfnv0(vreg: VReg) {

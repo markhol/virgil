@@ -114,11 +114,23 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 	}
 	def allocUseReg(vreg: VReg, constraint: int) -> int {
 		var prevReg = vreg.reg, loc: int = prevReg;
-		if (!isOk(vreg, constraint)) {
+		if (regSet.isStack(constraint)) {
+			if (vreg.isConst()) {
+				codegen.insertMoveValLoc(vreg, (vreg, constraint), vreg.regClass, prev.next);
+			} else {
+				if (prevReg != 0) {
+					codegen.insertMoveLocLoc((vreg, prevReg), (vreg, constraint), vreg.regClass, prev.next);
+				} else {
+					var newReg = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, 0));
+					codegen.insertMoveLocLoc((vreg, newReg), (vreg, constraint), vreg.regClass, prev.next);
+				}
+			}
+			return constraint;
+		} else if (!isOk(vreg, constraint)) {
 			if (isUsedInThisInstr(prevReg)) {
 				freeReg(prevReg, true);
 				loc = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, constraint));
-				codegen.insertMoveLocLoc((vreg, loc), (vreg, prevReg), vreg.regClass, cur);
+				codegen.insertMoveLocLoc((vreg, loc), (vreg, prevReg), vreg.regClass, prev.next);
 			} else {
 				spillReg(prevReg, next);
 				freeReg(prevReg, true);

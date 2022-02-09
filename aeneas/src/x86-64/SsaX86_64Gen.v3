@@ -687,8 +687,8 @@ class SsaX86_64Gen extends SsaMachGen {
 	}
 
 	def genSaveLocal(loc: int, v: VReg) {
-		if (Regs.SET.isCallerStack(loc)) return; // defined by caller, nothing to do
-		if (Regs.SET.isStack(loc)) {
+		if (regSet.isCallerStack(loc)) return; // defined by caller, nothing to do
+		if (regSet.isStack(loc)) {
 			var scratch = Regs.SCRATCH_GPR;
 			var opcode = if(v.regClass == RegClass.I32, I_MOVD, I_MOVQ); // no need for XMM for stack-to-stack
 			emit2(opcode | (AM_REG_OP << AM_SHIFT), op(Operand.Def(null, scratch)), op(Operand.Use(null, loc)));
@@ -725,7 +725,7 @@ class SsaX86_64Gen extends SsaMachGen {
 	}
 	def genRestoreLocal(v: VReg, loc: int) {
 		var from: int;
-		if (Regs.SET.isStack(loc)) {
+		if (regSet.isStack(loc)) {
 			// destination is stack
 			var opcode = if(v.regClass == RegClass.I32, I_MOVD, I_MOVQ);
 			if (v.isConst() && tryUseImm32(v.ssa)) { // emit move immediate directly into stack
@@ -767,7 +767,7 @@ class SsaX86_64Gen extends SsaMachGen {
 	def genMoveLocLoc(src: (VReg, int), dst: (VReg, int), regClass: RegClass) {
 		var from: int;
 		if (regSet.isStack(dst.1)) {
-			if (Regs.SET.isStack(src.1)) {
+			if (regSet.isStack(src.1)) {
 				var opcode = moveOpcode(regClass), srcloc = src.1;
 				emit2(opcode | (AM_REG_OP << AM_SHIFT), op(Operand.Def(null, Regs.SCRATCH_GPR)), op(Operand.Use(src)));
 				emit2(opcode | (AM_OP_REG << AM_SHIFT), op(Operand.Def(dst)), op(Operand.Use(null, Regs.SCRATCH_GPR)));
@@ -794,7 +794,8 @@ class SsaX86_64Gen extends SsaMachGen {
 	}
 	def genMoveValLoc(src: VReg, dst: (VReg, int), regClass: RegClass) {
 		var isImm32 = tryUseImm32(src.ssa), immOp = if(isImm32, popLastOperand());
-		if (Regs.SET.isStack(dst.1)) {
+		Terminal.put2("genMoveValLoc v%d = v%d\n", dst.0.varNum, src.varNum);
+		if (regSet.isStack(dst.1)) {
 			if (isImm32) { // emit move immediate directly into stack
 				var opcode = moveOpcode(regClass);
 				emit2(opcode | (AM_OP_IMM << AM_SHIFT), op(Operand.Def(dst)), op(immOp));
@@ -1480,12 +1481,12 @@ class SsaX86_64Gen extends SsaMachGen {
 
 	def loc_r(loc: int) -> X86_64Gpr {
 		var gpr = Regs.toGpr(loc);
-		if (gpr == null) return V3.fail1("expected GPR, got %s", Regs.SET.identify(loc));
+		if (gpr == null) return V3.fail1("expected GPR, got %s", regSet.identify(loc));
 		return gpr;
 	}
 	def loc_s(loc: int) -> X86_64Xmmr {
 		var xmm = Regs.toXmmr(loc);
-		if (xmm == null) return V3.fail1("expected XMM, got %s", Regs.SET.identify(loc));
+		if (xmm == null) return V3.fail1("expected XMM, got %s", regSet.identify(loc));
 		return xmm;
 	}
 	def loc_m(loc: int) -> X86_64Addr {
@@ -1498,7 +1499,7 @@ class SsaX86_64Gen extends SsaMachGen {
 		} else if (loc >= regSet.spillStart) {
 			offset = wordSize * (loc - regSet.spillStart + frame.spillArgs);
 		} else {
-			return V3.fail1("invalid spill location %s", Regs.SET.identify(loc));
+			return V3.fail1("invalid spill location %s", regSet.identify(loc));
 		}
 		return X86_64Regs.RSP.plus(offset);
 	}

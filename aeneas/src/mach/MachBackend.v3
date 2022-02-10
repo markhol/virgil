@@ -810,7 +810,9 @@ class SsaMachGen(context: SsaContext, mach: MachProgram, regSet: MachRegSet, w: 
 		operands.put(Operand.Use(upref(getVReg(i)), constraint));
 	}
 	def dfnFixed(i: SsaInstr, constraint: int) {
-		operands.put(Operand.Def(getVReg(i), constraint));
+		var vreg = getVReg(i);
+		vreg.hint = if(regSet != null && constraint < regSet.physRegs, byte.view(constraint));
+		operands.put(Operand.Def(vreg, constraint));
 	}
 	def dfnReg(i: SsaInstr) {
 		var vreg = getVReg(i);

@@ -522,7 +522,7 @@ class SsaX86_64Gen extends SsaMachGen {
 			useImm(target);
 			if (target == null || target.val == null || V3.isComponent(target.val.receiver)) skip = 1;
 		} else {
-			useReg(func);
+			useFixed(func, Regs.NOT_PARAM);
 		}
 
 		// use the arguments to the call
@@ -794,7 +794,6 @@ class SsaX86_64Gen extends SsaMachGen {
 	}
 	def genMoveValLoc(src: VReg, dst: (VReg, int), regClass: RegClass) {
 		var isImm32 = tryUseImm32(src.ssa), immOp = if(isImm32, popLastOperand());
-		Terminal.put2("genMoveValLoc v%d = v%d\n", dst.0.varNum, src.varNum);
 		if (regSet.isStack(dst.1)) {
 			if (isImm32) { // emit move immediate directly into stack
 				var opcode = moveOpcode(regClass);

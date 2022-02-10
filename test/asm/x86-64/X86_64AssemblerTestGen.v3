@@ -490,6 +490,7 @@ def ADDRS = [
 	X86_64Regs.RBP.indirect(),
 	X86_64Regs.RSI.indirect(),
 	X86_64Addr.new(X86_64Regs.RAX, null, 1, 0x33445566),
+	X86_64Addr.new(null, X86_64Regs.R8, 2, 8),
 	X86_64Addr.new(null, X86_64Regs.RCX, 1, 0x77),
 	X86_64Addr.new(null, X86_64Regs.RDX, 4, 0x99),
 	X86_64Addr.new(X86_64Regs.RBX, X86_64Regs.RBX, 1, 0x11223344),

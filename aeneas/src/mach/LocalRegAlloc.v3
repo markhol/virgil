@@ -119,6 +119,7 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 				codegen.insertMoveValLoc(vreg, (vreg, constraint), vreg.regClass, prev.next);
 			} else {
 				if (prevReg != 0) {
+					updateUsePos(prevReg);
 					codegen.insertMoveLocLoc((vreg, prevReg), (vreg, constraint), vreg.regClass, prev.next);
 				} else {
 					var newReg = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, 0));
@@ -126,7 +127,9 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 				}
 			}
 			return constraint;
-		} else if (!isOk(vreg, constraint)) {
+		} else if (isOk(vreg, constraint)) {
+			updateUsePos(prevReg);
+		} else {
 			if (isUsedInThisInstr(prevReg)) {
 				freeReg(prevReg, true);
 				loc = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, constraint));
@@ -139,6 +142,12 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 		}
 		if (paranoid) sanityCheck();
 		return loc;
+	}
+	def updateUsePos(reg: byte) {
+		var i = regState[reg];
+		if (i < 0) return;
+		var t = allocated[i];
+		allocated[i] = (t.0, pos);
 	}
 	def allocDefReg(vreg: VReg, constraint: int) -> int {
 		var prevReg = vreg.reg;

@@ -341,9 +341,10 @@ class MoveSet(regSet: MachRegSet) {
 		if (d >= 0) { // is the source of some regmove
 			var u = regmoves[d];
 			if (u.0 == ON_STACK) {
-				var scratch = regSet.scratch[vreg.regClass.tag];
+				var regClass = u.1.regClass;
+				var scratch = regSet.scratch[regClass.tag];
 				regmoves[d] = (IN_CYCLE, u.1, u.2, scratch);
-				codegen.insertMoveLocLoc((vreg, dst), (vreg, scratch), vreg.regClass, next);
+				codegen.insertMoveLocLoc((vreg, dst), (vreg, scratch), regClass, next);
 			} else if (u.0 == LIVE) {
 				emit0(codegen, d, next);
 			}

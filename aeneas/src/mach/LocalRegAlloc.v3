@@ -122,8 +122,8 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 					updateUsePos(prevReg);
 					codegen.insertMoveLocLoc((vreg, prevReg), (vreg, constraint), vreg.regClass, prev.next);
 				} else {
-					var newReg = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, 0));
-					codegen.insertMoveLocLoc((vreg, newReg), (vreg, constraint), vreg.regClass, prev.next);
+					allocSpill(vreg); // insert a save instruction before and alloc reg independently for it
+					codegen.insertMoveLocLoc((vreg, vreg.spill), (vreg, constraint), vreg.regClass, prev.next);
 				}
 			}
 			return constraint;

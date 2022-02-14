@@ -279,6 +279,7 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 		for (i < allocated.length) allocated[i] = (null, -1);
 		for (i < regState.length) regState[i] = -1;
 		cursor = 0;
+		pos = 0;
 	}
 	def recursivelyEmitMoves(j: int, next: ArchInstr) {
 		var t = parmoveDests[j], vreg = t.0, dest = t.1;
